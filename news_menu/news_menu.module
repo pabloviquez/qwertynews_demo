@@ -1,0 +1,124 @@
+<?php
+/**
+ * Menu module for the QWERTY News Website
+ * 
+ * @author Pablo Viquez
+ */
+
+/**
+ * Define menu items and page callbacks.
+ *
+ * @link https://api.drupal.org/api/drupal/modules%21system%21system.api.php/function/hook_menu/7
+ * @return array
+ */
+function news_menu_menu() {
+  $menu = array();
+
+  $menu['admin/structure/news_menu'] = array(
+    'title' => 'QWERTY Menu Administration',
+    'description' => 'Administration and Configuration of the QWERTY Menu',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('_news_menu_admin_form'),
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array('admin qwerty news menu'),
+  );
+
+  return $menu;
+}
+
+/**
+ * Define user permissions.
+ * 
+ * This hook can supply permissions that the module defines, so that they can be
+ * selected on the user permissions page and used to grant or restrict access to
+ * actions the module performs.
+ * 
+ * @link https://api.drupal.org/api/drupal/modules%21system%21system.api.php/function/hook_permission/7
+ * @return array
+ */
+function news_menu_permission() {
+  $permissions = array(
+    'admin qwerty news menu' => array(
+      'title' => t('Administer the Qwerty news module'),
+      'description' => t('Selects the vocabulary and parent main menu to display'),
+    ),
+  );
+
+  return $permissions;
+}
+
+/**
+ * Alter the data being saved to the {menu_router} table after hook_menu is
+ * invoked.
+ *
+ * @param array $items
+ *  Associative array of menu router definitions returned from hook_menu().
+ */
+function news_menu_menu_alter(&$items) {
+
+  
+}
+
+/**
+ * Administration form
+ * 
+ * @link https://api.drupal.org/api/drupal/developer!topics!forms_api_reference.html/7
+ * @link https://api.drupal.org/api/drupal/modules%21system%21system.module/function/system_settings_form/7
+ * 
+ * @param array $form
+ *  Nested array of form elements that comprise the form
+ * @param array $form_state
+ *  A keyed array containing the current state of the form
+ * @return array
+ */
+function _news_menu_admin_form($form, &$form_state) {
+  $vocabularies = taxonomy_get_vocabularies();
+
+  // Get previusly saved configs
+  $defaultValue = variable_get('qwerty_news_admin_vocabulary');
+
+  // Construct the list
+  $vocabularyList = array();
+  foreach ($vocabularies as $vid => $vocabulary) {
+    $vocabularyList[$vid] = "{$vocabulary->name} ($vocabulary->machine_name)";
+  }
+
+  $introText = <<<INTROTEXTHTML
+<p>This module allows you to select the taxonomy you want to display in the top menu as a submenu along with parent menu</p>
+INTROTEXTHTML;
+
+  $form['qwerty_news_admin_intro'] = array(
+    '#markup' => $introText,
+  );
+
+  $form['qwerty_news_admin_vocabulary'] = array(
+    '#type' => 'select',
+    '#title' => t('Vocabulary to use'),
+    '#description' => t('List of vocabularies. Select the vocabulary you want to use as menu'),
+    '#options' => $vocabularyList,
+    '#default_value' => $defaultValue,
+  );
+
+  $form['qwerty_news_admin_rebuild'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Rebuild menu'),
+
+  );
+
+  $form['#submit'][] = '_news_menu_admin_form_submit';
+  return system_settings_form($form);
+}
+
+/**
+ * Form submission handler for _news_menu_admin_form().
+ *
+ * @param array $form
+ *  Nested array of form elements that comprise the form
+ * @param array $form_state
+ *  A keyed array containing the current state of the form
+ * @return void
+ */
+function _news_menu_admin_form_submit($form, &$form_state) {
+  // IF qwerty_news_admin_rebuild is checked, rebuild the menu
+  
+}

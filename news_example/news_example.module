@@ -1,0 +1,20 @@
+<?php
+
+function news_example_menu() {
+  $menu = array(
+    'news-example-embedview' => array(
+      'title' => 'View embed example',
+      'page callback' => 'news_example_view_embed',
+      'type' => MENU_LOCAL_ACTION,
+      'access arguments' => array('access content'),
+    ),
+  );
+
+  return $menu;
+}
+
+function news_example_view_embed() {
+  $viewName = 'news';
+  $view = views_embed_view($viewName, 'embed_1');
+  return $view;
+}

@@ -1,0 +1,4 @@
+name = News Example
+description = News Example functions for testing. Nothing to be scare of
+package = Qwerty News
+core = 7.x
