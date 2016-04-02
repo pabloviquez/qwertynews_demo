@@ -1,7 +1,7 @@
 <?php
 /**
  * Menu module for the QWERTY News Website
- * 
+ *
  * @author Pablo Viquez
  */
 
@@ -15,7 +15,7 @@ function news_menu_menu() {
   $menu = array();
 
   $menu['admin/structure/news_menu'] = array(
-    'title' => 'QWERTY Menu Administration',
+    'title' => 'QWERTY Menu',
     'description' => 'Administration and Configuration of the QWERTY Menu',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('_news_menu_admin_form'),
@@ -28,11 +28,11 @@ function news_menu_menu() {
 
 /**
  * Define user permissions.
- * 
+ *
  * This hook can supply permissions that the module defines, so that they can be
  * selected on the user permissions page and used to grant or restrict access to
  * actions the module performs.
- * 
+ *
  * @link https://api.drupal.org/api/drupal/modules%21system%21system.api.php/function/hook_permission/7
  * @return array
  */
@@ -48,23 +48,11 @@ function news_menu_permission() {
 }
 
 /**
- * Alter the data being saved to the {menu_router} table after hook_menu is
- * invoked.
- *
- * @param array $items
- *  Associative array of menu router definitions returned from hook_menu().
- */
-function news_menu_menu_alter(&$items) {
-
-  
-}
-
-/**
  * Administration form
- * 
+ *
  * @link https://api.drupal.org/api/drupal/developer!topics!forms_api_reference.html/7
  * @link https://api.drupal.org/api/drupal/modules%21system%21system.module/function/system_settings_form/7
- * 
+ *
  * @param array $form
  *  Nested array of form elements that comprise the form
  * @param array $form_state
@@ -75,12 +63,28 @@ function _news_menu_admin_form($form, &$form_state) {
   $vocabularies = taxonomy_get_vocabularies();
 
   // Get previusly saved configs
-  $defaultValue = variable_get('qwerty_news_admin_vocabulary');
+  $defaultVid = variable_get('qwerty_news_admin_vocabulary');
+  $defaultMlid = variable_get('qwerty_news_admin_main_menu', '');
 
   // Construct the list
   $vocabularyList = array();
   foreach ($vocabularies as $vid => $vocabulary) {
     $vocabularyList[$vid] = "{$vocabulary->name} ($vocabulary->machine_name)";
+  }
+
+  // Get main menu top level
+  $query = db_select('menu_links', 'ml');
+  $query->fields('ml', array('mlid', 'link_title'));
+  $query->condition('menu_name', 'main-menu');
+  $query->condition('plid', 0);
+
+  $stm = $query->execute();
+  $items = $stm->fetchAll(\PDO::FETCH_OBJ);
+
+  $mainMenuItems = array('' => '-- SELECT ONE --');
+  foreach ($items as $item) {
+
+    $mainMenuItems[$item->mlid] = $item->link_title;
   }
 
   $introText = <<<INTROTEXTHTML
@@ -96,13 +100,23 @@ INTROTEXTHTML;
     '#title' => t('Vocabulary to use'),
     '#description' => t('List of vocabularies. Select the vocabulary you want to use as menu'),
     '#options' => $vocabularyList,
-    '#default_value' => $defaultValue,
+    '#default_value' => $defaultVid,
+    '#required' => TRUE,
+  );
+
+  $form['qwerty_news_admin_main_menu'] = array(
+    '#type' => 'select',
+    '#title' => t('Main menu link to use as parent'),
+    '#description' => t('List of vocabularies. Select the vocabulary you want to use as menu'),
+    '#options' => $mainMenuItems,
+    '#default_value' => $defaultMlid,
+    '#required' => TRUE,
   );
 
   $form['qwerty_news_admin_rebuild'] = array(
     '#type' => 'checkbox',
     '#title' => t('Rebuild menu'),
-
+    '#description' => t('By checking this box, all the menus created by this module will be deleted and re-created'),
   );
 
   $form['#submit'][] = '_news_menu_admin_form_submit';
@@ -119,6 +133,86 @@ INTROTEXTHTML;
  * @return void
  */
 function _news_menu_admin_form_submit($form, &$form_state) {
-  // IF qwerty_news_admin_rebuild is checked, rebuild the menu
-  
+  if ($form_state['values']['qwerty_news_admin_rebuild'] == '1') {
+    $vid = $form_state['values']['qwerty_news_admin_vocabulary'];
+    $plid = $form_state['values']['qwerty_news_admin_main_menu'];
+    $results = _news_menu_rebuild_main_menu($plid, $vid);
+
+    $msg = t('QWERTY News sub-menu re-created. Total deleted: @deleted, total created: @created.',
+      array(
+        '@deleted' => $results['deleted'],
+        '@created' => $results['created'],
+      )
+    );
+
+    drupal_set_message($msg, 'status');
+  }
+}
+
+/**
+ * Deletes all submenus for the main menu that has the module 'news_menu' and
+ * re-inserts them
+ *
+ * @link https://api.drupal.org/api/drupal/includes%21menu.inc/function/menu_link_save/7
+ * @param int $plid
+ *  Main menu parent link id
+ * @param int $vid
+ *  Vocabulary ID. Will get the terms for the given vocabulary and add them to
+ *  $plid
+ * @return array
+ *  An array as follow:
+ * @code
+ * array(
+ *  'deleted' => (int),
+ *  'created' => (int),
+ * );
+ * @endcode
+ */
+function _news_menu_rebuild_main_menu($plid, $vid) {
+  $totalDeleted = 0;
+  $totalCreated = 0;
+  if (ctype_digit((string) $plid) && ctype_digit((string) $vid)) {
+    $totalDeleted = db_delete('menu_links')
+      ->condition('module', 'news_menu')
+      ->execute();
+  }
+
+  // Get all the terms for the vocabulary
+  $terms = taxonomy_get_tree($vid);
+  foreach ($terms as $tid => $term) {
+    // Only first level
+    if ($term->parents[0] != '0') {
+      continue;
+    }
+
+    $termUri = taxonomy_term_uri($term);
+    $termPath = drupal_get_normal_path($termUri['path']);
+
+    // Construct the menu link
+    $item = array(
+      'link_path'  => $termPath,
+      'link_title' => $term->name,
+      'menu_name'  => 'main-menu',
+      'module'     => 'news_menu',
+      'weight'     => 0,
+      'expanded'   => 1,
+      'options'    => array(
+        'attributes' => array(
+          'title' => $term->name,
+          'alt'   => $term->name,
+        ),
+      ),
+      'plid'       => $plid,
+    );
+
+    $mlid = menu_link_save($item);
+    if (ctype_digit((string) $mlid)) {
+      $totalCreated++;
+    }
+  }
+
+  return array(
+    'deleted' => $totalDeleted,
+    'created' => $totalCreated,
+  );
 }
